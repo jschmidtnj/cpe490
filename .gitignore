@@ -1,1 +1,2 @@
-# ignore specific files here
+# pdf files
+tex2pdf.*
