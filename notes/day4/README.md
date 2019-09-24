@@ -21,4 +21,16 @@ $RTT _{new} = (1- \alpha) \cdot RTT _{old} + \alpha \cdot RTT _{current}$
 
 this allows for the server to send one packet and if it fails to keep sending the other packets and say that the first one didn't work, instead of keep trying to send the first packet
 
+### AIMD
 
+- solved internet congestion problems, with some packets hogging all the bandwidth
+
+### TCP
+
+- tcp doesn't have any sense of time - no time stamps, etc
+- ACK numbers are in the tcp header
+
+### udp
+
+- has source port, destination port, length, and checksum
+- has very little reliability
