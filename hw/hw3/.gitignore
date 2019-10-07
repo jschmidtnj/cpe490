@@ -1,2 +1,3 @@
-# ignore txt files outputted
+# ignore files outputted
 *.txt
+*.png
