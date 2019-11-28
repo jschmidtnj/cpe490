@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <heltec.h>
 
-#define NODE1
+#define NODE0
 
 #ifdef NODE0
 #include "test/node0.h"
@@ -9,22 +9,44 @@
 #include "test/node1.h"
 #endif
 
-long last_time_send = 0;
-String rssi = "RSSI --";
-String packet = "";
+#define BAND 915E6 // set band directly here
+#define SEND_INTERVAL 1000
+#define BAUD_RATE 115200
 
-void cbk(int packetSize)
-{
-  if (packetSize == 0)
-    return;
-  Serial.println("got packet");
-  packet = "";
-  while (LoRa.available())       // can't use readString() in callback
-    packet += (char)LoRa.read(); // add bytes one by one
-  Serial.println(packet);
+void display(String data) {
   Heltec.display->clear();
-  Heltec.display->drawString(0, 0, packet);
+  Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
+  Heltec.display->setFont(ArialMT_Plain_10);
+  Heltec.display->drawString(0 , 0 , data);
   Heltec.display->display();
+}
+
+void onReceive(int packetSize)
+{
+  if (packetSize == 0) return;          // if there's no packet, return
+
+  // read packet header bytes:
+  byte incomingMsgId = LoRa.read();     // incoming msg ID
+  byte incomingLength = LoRa.read();    // incoming msg length
+
+  String incoming = "";                 // payload of packet
+
+  while (LoRa.available())             // can't use readString() in callback
+  {
+    incoming += (char)LoRa.read();      // add bytes one by one
+  }
+
+  if (incomingLength != incoming.length())   // check length for error
+  {
+    Serial.println("error: message length does not match length");
+    return;                             // skip rest of function
+  }
+  // if message is for this device, or broadcast, print details:
+  Serial.println("Message ID: " + String(incomingMsgId));
+  Serial.println("Message length: " + String(incomingLength));
+  Serial.println("Message: " + incoming);
+  Serial.println("RSSI: " + String(LoRa.packetRssi()));
+  display(incoming + ", " + String(incomingMsgId));
 }
 
 void setup()
@@ -38,34 +60,34 @@ void setup()
   Heltec.display->setFont(ArialMT_Plain_10);
   Heltec.display->drawString(0, 0, NAME);
   Heltec.display->display();
-  last_time_send = millis();
-  LoRa.onReceive(cbk);
-  LoRa.receive();
-  delay(5000);
+  // LoRa.onReceive(onReceive);
+  // LoRa.receive();
 }
 
-int count = 0;
+long lastSendTime = 0;        // last send time
+byte msgCount = 0;            // count of outgoing messages
+int interval = SEND_INTERVAL;          // interval between sends
+
+void sendMessage(String outgoing)
+{
+  LoRa.beginPacket();                   // start packet
+  LoRa.write(msgCount);                 // add message ID
+  LoRa.write(outgoing.length());        // add payload length
+  LoRa.print(outgoing);                 // add payload
+  LoRa.endPacket();                     // finish packet and send it
+  msgCount++;                           // increment message ID
+}
 
 void loop()
 {
-  if (millis() - last_time_send > SEND_INTERVAL)
-  {
-    Serial.println("send");
-    last_time_send = millis();
-    /*
-     * LoRa.setTxPower(txPower,RFOUT_pin);
-     * txPower -- 0 ~ 20
-     * RFOUT_pin could be RF_PACONFIG_PASELECT_PABOOST or RF_PACONFIG_PASELECT_RFO
-     *   - RF_PACONFIG_PASELECT_PABOOST -- LoRa single output via PABOOST, maximum output 20dBm
-     *   - RF_PACONFIG_PASELECT_RFO     -- LoRa single output via RFO_HF / RFO_LF, maximum output 14dBm
-     */
-    LoRa.beginPacket();
-    LoRa.print(MESSAGE);
-    LoRa.print(", count: ");
-    LoRa.print(count);
-    LoRa.endPacket();
-    count++;
-    LoRa.receive();
+  if (millis() - lastSendTime > interval) {
+    sendMessage(MESSAGE);
+    Serial.println("Sending " + String(MESSAGE));
+    lastSendTime = millis();            // timestamp the message
+    interval = random(SEND_INTERVAL) + SEND_INTERVAL;
+    // LoRa.receive();
   }
-  delay(10);
+  int packetSize = LoRa.parsePacket();
+  if (packetSize)
+    onReceive(packetSize);
 }
