@@ -1,0 +1,14 @@
+{
+    "name": "Emergency Services",
+    "short_name": "Emergency",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#f0f0f0",
+    "theme_color": "#ff6600",
+    "description": "Mesh Network for Emergency Services",
+    "icons": [{
+      "src": "/icon.png",
+      "sizes": "500x500",
+      "type": "image/png"
+    }]
+  }

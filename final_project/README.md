@@ -15,6 +15,7 @@
   - simple p2p communication
   - facilitate normal people helping in disaster relief
   - satellite networks to tap into for when cell towers are down
+- https://www.sciencedirect.com/science/article/pii/S2405959517302953
 
 ## abstract
 
