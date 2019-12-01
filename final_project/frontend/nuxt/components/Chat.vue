@@ -1,14 +1,18 @@
 <template>
   <div>
     <v-select
-      v-if="organizer"
+      v-if="responder"
       :options="chatOptions"
       v-model="destination"
+      @select="onChatSelect"
+      placeholder="select chat"
       label="label"
-    />
+    >
+      <span slot="no-options">No one needs assistance.</span>
+    </v-select>
     <Chat
       :participants="participants"
-      :myself="myself"
+      :myself="me"
       :messages="messages"
       :onType="onType"
       :onMessageSubmit="onMessageSubmit"
@@ -21,26 +25,19 @@
       :submitIconSize="'30px'"
       :asyncMode="false"
       class="chat mt-2"
-    >
-      <template v-slot:header>
-        <div>
-          <p
-            v-for="(participant, index) in participants"
-            :key="index"
-            class="custom-title"
-          >
-            {{ participant.name }}
-          </p>
-        </div>
-      </template>
-    </Chat>
+    />
   </div>
 </template>
 
 <script>
+import { mapMutations } from 'vuex'
+import VueScrollTo from 'vue-scrollto'
 import Chat from '~/components/chat/Chat.vue'
 import { chatConf } from '~/assets/config'
+
 const emergencyOptions = []
+const emergencyServicesId = 2
+const personInNeedId = 3
 
 for (let i = 0; i < chatConf.emergencyServicesAddresses.length; i++) {
   emergencyOptions.push({
@@ -60,17 +57,22 @@ export default {
       participants: [
         {
           name: 'Emergency Services',
-          id: 2
+          id: emergencyServicesId
+        },
+        {
+          name: 'Person in Need',
+          id: personInNeedId
         }
       ],
-      myself: {
+      me: {
         name: 'me',
         id: 1
       },
       socket: null,
-      organizer: false,
+      responder: false,
       source: '',
       destination: null,
+      cancleScroll: null,
       chatOptions: [],
       messages: [],
       colors: {
@@ -101,6 +103,11 @@ export default {
       }
     }
   },
+  computed: {
+    myself() {
+      return this.$store.state.chat.myself
+    }
+  },
   beforeDestroy() {
     if (this.socket) this.socket.close()
     this.messages = []
@@ -112,10 +119,11 @@ export default {
         if (res.status === 200 && res.data.hasOwnProperty('source')) {
           if (
             emergencyOptions.find(
-              (option) => option.value.charCodeAt(0) === res.data.source
+              (option) =>
+                option.value.charCodeAt(0) === parseInt(res.data.source)
             )
           ) {
-            this.organizer = true
+            this.responder = true
             // the current node is the emergency worker
             this.updateChatSelection()
           } else {
@@ -144,7 +152,16 @@ export default {
             if (jsonData.hasOwnProperty('debug')) {
               console.log(jsonData.debug)
             } else if (jsonData.hasOwnProperty('message')) {
-              this.messages.push(jsonData.message)
+              const message = {
+                content: jsonData.message,
+                myself: false,
+                participantId: this.responder
+                  ? emergencyServicesId
+                  : personInNeedId,
+                uploaded: false,
+                viewed: false
+              }
+              this.newMessage(message)
             }
           }
           this.socket.onclose = (evt) => {
@@ -170,20 +187,64 @@ export default {
       })
   },
   methods: {
+    ...mapMutations({ newMessage: 'chat/newMessage' }),
+    onChatSelect() {
+      this.messages = []
+    },
+    updateChatSelection() {
+      this.$axios
+        .get(chatConf.senderListEndpoint)
+        .then((res) => {
+          if (res.status === 200 && res.data.hasOwnProperty('senders')) {
+            const senders = []
+            for (let i = 0; i < res.data.senders.length; i++) {
+              senders.push({
+                value: String.fromCharCode(res.data.senders[i]),
+                label: `emergency ${i + 1}`
+              })
+            }
+            this.chatOptions = senders
+          } else {
+            this.$toasted.global.warn({ message: 'no senders found' })
+          }
+        })
+        .catch((err) => {
+          this.$toasted.global.error({
+            message: `got error with get senders request ${JSON.stringify(err)}`
+          })
+        })
+    },
     onType(event) {
       // here you can set any behavior
     },
+    scrollToBottom() {
+      if (this.cancleScroll) {
+        this.cancleScroll()
+        this.cancleScroll = null
+      }
+      this.cancleScroll = VueScrollTo.scrollTo(
+        `#message-${this.$store.state.chat.messages.length - 1}`,
+        {
+          container: '#containerMessageDisplay',
+          offset: 0,
+          force: true,
+          cancelable: true
+        }
+      )
+    },
     onMessageSubmit(message) {
-      this.messages.push(message)
       console.log(`New message sending: ${JSON.stringify(message)}`)
       if (this.destination) {
-        const newMessage =
+        const theMessage =
           this.destination.value + messageType + message.content
-        this.socket.send(newMessage)
+        this.socket.send(theMessage)
         message.uploaded = true
       } else {
         this.$toasted.global.error({ message: 'no destination found' })
       }
+      setTimeout(() => {
+        this.scrollToBottom()
+      }, 100)
     }
   }
 }
@@ -191,8 +252,8 @@ export default {
 
 <style lang="scss" scoped>
 .chat {
-  min-height: 40rem;
   max-width: 30rem;
+  height: 40rem;
 }
 .chat .custom-title {
   color: #ffffff;

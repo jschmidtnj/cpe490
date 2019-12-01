@@ -11,13 +11,13 @@
       <p :style="{ color: colors.header.text }" class="header-title-text">
         {{ chatTitle }}
       </p>
-      <p class="header-paticipants-text">
+      <!--p class="header-paticipants-text">
         <span>{{ myself.name }},</span>
         <span v-for="(participant, index) in participants" :key="participant.id"
           >{{ participant.name
           }}{{ participants.length - index - 1 ? ', ' : '' }}</span
         >
-      </p>
+      </p-->
     </div>
 
     <div v-if="!hideCloseButton && !hasHeaderSlot" class="header-exit">
@@ -74,13 +74,13 @@ export default {
   },
   computed: {
     participants() {
-      return this.$store.state.participants
+      return this.$store.state.chat.participants
     },
     myself() {
-      return this.$store.state.myself
+      return this.$store.state.chat.myself
     },
     chatTitle() {
-      return this.$store.state.chatTitle
+      return this.$store.state.chat.chatTitle
     },
     hasHeaderSlot() {
       return !!this.$slots.header

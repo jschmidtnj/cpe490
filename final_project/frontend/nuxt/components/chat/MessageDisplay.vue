@@ -1,5 +1,6 @@
 <template>
   <div
+    id="containerMessageDisplay"
     ref="containerMessageDisplay"
     :style="{ background: colors.message.messagesDisplay.bg }"
     @scroll="updateScrollState"
@@ -15,6 +16,7 @@
         'my-message': message.myself,
         'other-message': !message.myself
       }"
+      :id="`message-${index}`"
       class="message-container"
     >
       <div
@@ -38,7 +40,7 @@
         :style="{ 'justify-content': message.myself ? 'flex-end' : 'baseline' }"
         class="message-timestamp"
       >
-        {{ message.timestamp.format('LT') }}
+        {{ formatDate(message) }}
         <v-feather-icon
           v-if="asyncMode && message.uploaded"
           name="check"
@@ -52,6 +54,7 @@
 
 <script>
 import { mapGetters, mapMutations } from 'vuex'
+import { format } from 'date-fns'
 
 export default {
   props: {
@@ -77,11 +80,11 @@ export default {
       loading: false
     }
   },
-  computed: {
-    ...mapGetters({ getParticipantById: 'chat/getParticipantById' }),
-    ...mapGetters({ messages: 'chat/messages' }),
-    ...mapGetters({ myself: 'chat/myself' })
-  },
+  computed: mapGetters({
+    getParticipantById: 'chat/getParticipantById',
+    messages: 'chat/messages',
+    myself: 'chat/myself'
+  }),
   mounted() {
     this.goToBottom()
     this.$refs.containerMessageDisplay.dispatchEvent(new CustomEvent('scroll'))
@@ -104,6 +107,10 @@ export default {
         setMessages: 'chat/setMessages'
       }
     ]),
+    formatDate(message) {
+      const date = new Date(message.timestamp)
+      return format(date, 'h:m aaaa')
+    },
     updateScrollState({ target: { scrollTop, clientHeight, scrollHeight } }) {
       this.updateScroll = scrollTop + clientHeight >= scrollHeight
 

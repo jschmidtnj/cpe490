@@ -1,6 +1,5 @@
 import React from 'react'
 import { Component } from 'react'
-/*
 import Head from 'next/head'
 import dynamic from 'next/dynamic'
 import {
@@ -13,7 +12,6 @@ const ChatNoSSR = dynamic(
   () => import('../components/chat'),
   { ssr: false }
 )
-*/
 
 class Chat extends Component {
   constructor(props) {
@@ -24,7 +22,6 @@ class Chat extends Component {
   componentDidMount() {
     console.log('component mounted')
   }
-/*
   render() {
     return (
       <div>
@@ -42,12 +39,6 @@ class Chat extends Component {
         </Container>
         <ChatNoSSR />
       </div>
-    )
-  }
-*/
-  render() {
-    return (
-      <p>hello world!</p>
     )
   }
 }

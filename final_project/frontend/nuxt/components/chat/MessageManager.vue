@@ -65,14 +65,14 @@ export default {
   },
   computed: {
     myself() {
-      return this.$store.state.myself
+      return this.$store.state.chat.myself
     },
     placeholder() {
-      return this.$store.state.placeholder
+      return this.$store.state.chat.placeholder
     }
   },
   methods: {
-    ...mapMutations([{ newMessage: 'chat/newMessage' }]),
+    ...mapMutations({ newMessage: 'chat/newMessage' }),
     sendMessage() {
       this.textInput = this.$refs.userInput.textContent
       this.$refs.userInput.textContent = ''

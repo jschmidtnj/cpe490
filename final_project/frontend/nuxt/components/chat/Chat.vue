@@ -132,7 +132,7 @@ export default {
       this.setMessages(this.messages)
     }
   },
-  mounted() {
+  created() {
     this.setParticipants(this.participants)
     this.setMyself(this.myself)
     this.setMessages(this.messages)

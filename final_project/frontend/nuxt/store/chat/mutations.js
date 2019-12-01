@@ -1,6 +1,6 @@
 export default {
   newMessage: (state, message) => {
-    message.timestamp = message.timestamp.toISOString()
+    message.timestamp = new Date().getTime()
     state.messages = [...state.messages, message]
   },
   setParticipants: (state, participants) => {

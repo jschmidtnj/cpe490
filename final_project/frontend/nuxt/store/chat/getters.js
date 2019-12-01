@@ -1,8 +1,8 @@
 export default {
-  getParticipantById: (state) => {
+  getParticipantById: (state) => (id) => {
     let currParticipant
     state.participants.forEach((participant) => {
-      if (participant.id === state.id) {
+      if (participant.id === id) {
         currParticipant = participant
       }
     })

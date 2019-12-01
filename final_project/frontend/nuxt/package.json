@@ -24,6 +24,7 @@
     "coffee-loader": "^0.9.0",
     "coffeescript": "^2.4.1",
     "cross-env": "^5.2.0",
+    "date-fns": "^2.8.1",
     "express": "^4.16.4",
     "node-sass": "^4.13.0",
     "nuxt": "^2.0.0",
@@ -34,6 +35,7 @@
     "vue-beautiful-chat": "^2.3.1",
     "vue-feather-icons": "^5.0.0",
     "vue-quick-chat": "^1.0.6",
+    "vue-scrollto": "^2.17.1",
     "vue-select": "^3.3.0",
     "vue-toasted": "^1.1.27"
   },
