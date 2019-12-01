@@ -1,14 +1,15 @@
 <template>
   <div>
     <v-select
-      v-if="responder"
       :options="chatOptions"
       v-model="destination"
       @select="onChatSelect"
       placeholder="select chat"
       label="label"
     >
-      <span slot="no-options">No one needs assistance.</span>
+      <span slot="no-options">{{
+        responder ? 'no one needs assistance' : 'no responders found'
+      }}</span>
     </v-select>
     <Chat
       :participants="participants"
@@ -20,7 +21,7 @@
       :placeholder="'send message'"
       :colors="colors"
       :borderStyle="borderStyle"
-      :hideCloseButton="false"
+      :hideCloseButton="true"
       :closeButtonIconSize="'20px'"
       :submitIconSize="'30px'"
       :asyncMode="false"
@@ -47,6 +48,7 @@ for (let i = 0; i < chatConf.emergencyServicesAddresses.length; i++) {
 }
 
 const messageType = '\x00'
+const connectType = '\x01'
 
 export default {
   components: {
@@ -70,7 +72,8 @@ export default {
       },
       socket: null,
       responder: false,
-      source: '',
+      radiosource: '',
+      websocketid: '',
       destination: null,
       cancleScroll: null,
       chatOptions: [],
@@ -86,7 +89,7 @@ export default {
             text: '#0a0a0a'
           },
           others: {
-            bg: '#fb4141',
+            bg: '#4061e6',
             text: '#0a0a0a'
           },
           messagesDisplay: {
@@ -116,26 +119,21 @@ export default {
     this.$axios
       .get(chatConf.configEndpoint)
       .then((res) => {
-        if (res.status === 200 && res.data.hasOwnProperty('source')) {
+        if (res.status === 200 && res.data.hasOwnProperty('radiosource')) {
           if (
             emergencyOptions.find(
               (option) =>
-                option.value.charCodeAt(0) === parseInt(res.data.source)
+                option.value.charCodeAt(0) === parseInt(res.data.radiosource[0])
             )
           ) {
             this.responder = true
-            // the current node is the emergency worker
-            this.updateChatSelection()
-          } else {
-            // the current node is a person who needs help
-            this.destination = emergencyOptions[0]
           }
+          this.radiosource = res.data.radiosource
           this.socket = new window.WebSocket(
             `ws://${process.env.apiurl.replace('http://', '')}${
               chatConf.websocketEndpoint
             }`
           )
-          this.source = res.data.source
           this.socket.onopen = (evt) => {
             this.$toasted.global.success({
               message: 'Connection established'
@@ -152,16 +150,49 @@ export default {
             if (jsonData.hasOwnProperty('debug')) {
               console.log(jsonData.debug)
             } else if (jsonData.hasOwnProperty('message')) {
-              const message = {
-                content: jsonData.message,
-                myself: false,
-                participantId: this.responder
-                  ? emergencyServicesId
-                  : personInNeedId,
-                uploaded: false,
-                viewed: false
+              if (this.destination) {
+                const message = {
+                  content: jsonData.message,
+                  myself: false,
+                  participantId: this.responder
+                    ? emergencyServicesId
+                    : personInNeedId,
+                  uploaded: false,
+                  viewed: false
+                }
+                this.newMessage(message)
+                setTimeout(() => {
+                  this.scrollToBottom()
+                }, 100)
               }
-              this.newMessage(message)
+            } else if (jsonData.hasOwnProperty('connect')) {
+              this.chatOptions.push({
+                value: String.fromCharCode(jsonData.connect),
+                label: `emergency ${this.chatOptions.length}`
+              })
+            } else if (jsonData.hasOwnProperty('currentid')) {
+              this.websocketid = String.fromCharCode(jsonData.currentid)
+              this.updateChatSelection()
+            } else if (jsonData.hasOwnProperty('disconnect')) {
+              const index = this.chatOptions.findIndex(
+                (elem) =>
+                  elem.value === String.fromCharCode(jsonData.disconnect)
+              )
+              if (index > -1) this.chatOptions.splice(index, 1)
+            } else if (jsonData.hasOwnProperty('connectionOptions')) {
+              const options = []
+              for (let i = 0; i < jsonData.connectionOptions.length; i++) {
+                options.push({
+                  value: {
+                    radio: String.fromCharCode(
+                      jsonData.connectionOptions[i][0]
+                    ),
+                    id: String.fromCharCode(jsonData.connectionOptions[i][1])
+                  },
+                  label: `emergency ${i + 1}`
+                })
+              }
+              this.chatOptions = options
             }
           }
           this.socket.onclose = (evt) => {
@@ -177,7 +208,7 @@ export default {
             console.error(`[error]: `, err)
           }
         } else {
-          this.$toasted.global.warn({ message: 'no source found' })
+          this.$toasted.global.info({ message: 'no source found' })
         }
       })
       .catch((err) => {
@@ -190,29 +221,72 @@ export default {
     ...mapMutations({ newMessage: 'chat/newMessage' }),
     onChatSelect() {
       this.messages = []
+      if (!this.responder) {
+        const theMessage =
+          this.destination.value.radio +
+          this.destination.value.id +
+          connectType +
+          ''
+        this.socket.send(theMessage)
+      }
     },
     updateChatSelection() {
-      this.$axios
-        .get(chatConf.senderListEndpoint)
-        .then((res) => {
-          if (res.status === 200 && res.data.hasOwnProperty('senders')) {
-            const senders = []
-            for (let i = 0; i < res.data.senders.length; i++) {
-              senders.push({
-                value: String.fromCharCode(res.data.senders[i]),
-                label: `emergency ${i + 1}`
+      console.log('update chat selection')
+      if (this.responder) {
+        this.$axios
+          .get(chatConf.alreadyConnectedEndpoint)
+          .then((res) => {
+            if (res.status === 200 && res.data.hasOwnProperty('connected')) {
+              const senders = []
+              for (let i = 0; i < res.data.connected.length; i++) {
+                senders.push({
+                  value: {
+                    radio: String.fromCharCode(res.data.connected[i][0]),
+                    id: String.fromCharCode(res.data.connected[i][1])
+                  },
+                  label: `emergency ${i + 1}`
+                })
+              }
+              this.chatOptions = senders
+            } else {
+              this.$toasted.global.info({
+                message: 'problem finding connections'
               })
             }
-            this.chatOptions = senders
-          } else {
-            this.$toasted.global.warn({ message: 'no senders found' })
-          }
-        })
-        .catch((err) => {
-          this.$toasted.global.error({
-            message: `got error with get senders request ${JSON.stringify(err)}`
           })
-        })
+          .catch((err) => {
+            console.log(err)
+            this.$toasted.global.error({
+              message: `got error with get alreadyConnected request ${JSON.stringify(
+                err
+              )}`
+            })
+          })
+      } else {
+        this.$axios
+          .put(chatConf.potentialConnectionsEndpoint, {
+            radio: this.radiosource,
+            websocketid: this.websocketid.charCodeAt(0)
+          })
+          .then((res) => {
+            if (res.status === 200 && res.data.hasOwnProperty('message')) {
+              console.log(res.data.message)
+            } else {
+              this.$toasted.global.info({ message: 'no success message found' })
+            }
+          })
+          .catch((err) => {
+            if (err.response) {
+              console.log(err.response.data)
+            }
+            console.log(err)
+            this.$toasted.global.error({
+              message: `got error with get potential connections request ${JSON.stringify(
+                err
+              )}`
+            })
+          })
+      }
     },
     onType(event) {
       // here you can set any behavior
@@ -236,7 +310,10 @@ export default {
       console.log(`New message sending: ${JSON.stringify(message)}`)
       if (this.destination) {
         const theMessage =
-          this.destination.value + messageType + message.content
+          this.destination.value.radio +
+          this.destination.value.id +
+          messageType +
+          message.content
         this.socket.send(theMessage)
         message.uploaded = true
       } else {

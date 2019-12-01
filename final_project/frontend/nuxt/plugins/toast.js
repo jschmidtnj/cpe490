@@ -22,6 +22,17 @@ for (const key in toasts) {
 }
 
 Vue.toasted.register(
+  'info',
+  (payload) => {
+    if (!payload.message) {
+      return 'info'
+    }
+    return payload.message
+  },
+  erroroptions
+)
+
+Vue.toasted.register(
   'error',
   (payload) => {
     if (!payload.message) {

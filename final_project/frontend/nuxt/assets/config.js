@@ -7,6 +7,8 @@ export const toasts = {
 export const chatConf = {
   websocketEndpoint: '/ws',
   configEndpoint: '/config',
-  senderListEndpoint: '/senders',
-  emergencyServicesAddresses: ['\x01']
+  alreadyConnectedEndpoint: '/alreadyConnected',
+  potentialConnectionsEndpoint: '/potentialConnections',
+  emergencyServicesAddresses: ['\x01'],
+  clientAddresses: ['\x00']
 }

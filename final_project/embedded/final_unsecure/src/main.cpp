@@ -40,28 +40,34 @@ AsyncWebSocket ws("/ws");
 struct Message
 {
   std::string payload;
-  byte destination;
-  byte sender;
+  byte radioDestination;
+  byte idDestination;
+  byte radioSender;
+  byte idSender;
   byte id;             // message send count / id
   byte frame;          // frame number
   byte packet;         // packet count / number
   byte packetLocation; // packet start, mid, or end
   byte type;
   int hash;
-  Message(std::string _payload, byte _destination, byte _sender, byte _id, byte _frame, byte _packet, byte _packetLocation, byte _type) : payload{_payload},
-                                                                                                                                          destination{_destination},
-                                                                                                                                          sender(_sender),
-                                                                                                                                          id{_id},
-                                                                                                                                          frame{_frame},
-                                                                                                                                          packet{_packet},
-                                                                                                                                          packetLocation{_packetLocation},
-                                                                                                                                          type{_type}
+  Message(std::string _payload, byte _radioDestination, byte _idDestination, byte _radioSender, byte _idSender, byte _id, byte _frame, byte _packet, byte _packetLocation, byte _type) : payload{_payload},
+                                                                                                                                                                                         radioDestination{_radioDestination},
+                                                                                                                                                                                         idDestination{_idDestination},
+                                                                                                                                                                                         radioSender(_radioSender),
+                                                                                                                                                                                         idSender(_idSender),
+                                                                                                                                                                                         id{_id},
+                                                                                                                                                                                         frame{_frame},
+                                                                                                                                                                                         packet{_packet},
+                                                                                                                                                                                         packetLocation{_packetLocation},
+                                                                                                                                                                                         type{_type}
   {
-    hash = std::hash<std::string>{}(payload + (char)sender + (char)destination + (char)id + (char)frame + (char)packet + (char)type);
+    hash = std::hash<std::string>{}(payload + (char)radioDestination + (char)idDestination + (char)radioSender + (char)idSender + (char)id + (char)frame + (char)packet + (char)packetLocation + (char)type);
   }
 };
 
-std::vector<AsyncWebSocketClient *> websocketClients;
+std::unordered_map<byte, AsyncWebSocketClient *> websocketClientsById;
+std::unordered_map<AsyncWebSocketClient *, byte> websocketClientsByVal;
+std::unordered_map<AsyncWebSocketClient *, std::pair<byte, byte>> sendSocketStatus;
 std::queue<Message> outgoingMessages;
 std::queue<int *> hashQueue;
 std::unordered_set<int> hashHistory;
@@ -70,18 +76,33 @@ unsigned long lastSend = 0;
 byte msgCount = 0; // count of outgoing messages
 std::vector<Message> incomingMessages;
 std::unordered_map<AsyncWebSocketClient *, std::vector<byte>> messageHeaders;
-std::unordered_set<byte> pastSenders;
-std::queue<byte *> pastSendersQueue;
+std::unordered_set<std::string> connectedOverRadio;
 
 byte startType = 0xF0;
 byte endType = 0x0F;
 byte midType = 0x00;
 byte startEndType = 0xFF;
 byte typeMessage = 0x00;
+byte typeConnect = 0x01;
+byte typeDisconnect = 0x02;
+byte typePotentialConnections = 0x03;
 
 static const unsigned long BLINK_INTERVAL = 1000; //ms
 static unsigned long lastBlink = 0;
 static bool blinkState = false; // false = off
+
+void saveMessages(std::string fullmessage, byte radioDestination, byte idDestination, byte idSender, byte id, byte frame, byte packetLocation, byte type)
+{
+  // split into multiple packets
+  int endCount = ceil((double)fullmessage.length() / maxLoraPacket);
+  for (int i = 0; i < endCount; i++)
+  {
+    byte location = midType;
+    if (i == 0 || i == endCount - 1)
+      location = packetLocation;
+    outgoingMessages.push(Message(fullmessage.substr(i * maxLoraPacket, maxLoraPacket), radioDestination, idDestination, address, idSender, id, frame, i, location, type));
+  }
+}
 
 void onReceive(int packetSize)
 {
@@ -89,8 +110,10 @@ void onReceive(int packetSize)
     return; // if there's no packet, return
   DBG_OUTPUT_PORT.println("received message");
   // read packet header bytes:
-  byte recipient = LoRa.read();
-  byte sender = LoRa.read();
+  byte radioRecipient = LoRa.read();
+  byte idRecipient = LoRa.read();
+  byte radioSender = LoRa.read();
+  byte idSender = LoRa.read();
   byte id = LoRa.read(); // incoming msg ID
   byte frame = LoRa.read();
   byte packet = LoRa.read();
@@ -108,11 +131,11 @@ void onReceive(int packetSize)
     DBG_OUTPUT_PORT.println("error: message length does not match length");
     return; // skip rest of function
   }
-  Message message(payload, recipient, sender, id, frame, packet, packetLocation, type);
-  if (recipient != address)
+  Message message(payload, radioRecipient, idRecipient, radioSender, idSender, id, frame, packet, packetLocation, type);
+  if (radioRecipient != address)
   {
     if (debug_mode)
-      DBG_OUTPUT_PORT.println("this message is not for me. It's for " + String(recipient));
+      DBG_OUTPUT_PORT.println("this message is not for me. It's for " + String(radioRecipient));
     if (hashHistory.find(message.hash) == hashHistory.end())
     {
       // not found in set
@@ -129,27 +152,53 @@ void onReceive(int packetSize)
   }
   // here the packet is for me
   incomingMessages.push_back(message);
-  pastSenders.insert(sender);
-  pastSendersQueue.push(&sender);
-  if (pastSendersQueue.size() > senderHistorySize)
-  {
-    pastSenders.erase(*pastSendersQueue.front());
-    pastSendersQueue.pop();
-  }
   if (message.packetLocation == endType || message.packetLocation == startEndType)
   {
     std::string fullMessage = "";
     for (Message &message : incomingMessages)
       fullMessage.append(message.payload);
-    std::string key = message.type == typeMessage ? "message" : "unknown";
-    for (AsyncWebSocketClient *client : websocketClients)
+    std::string key;
+    if (message.type == typeMessage)
     {
-      DynamicJsonDocument messageObj(200);
-      messageObj[key.c_str()] = fullMessage.c_str();
-      String messageStr;
-      serializeJson(messageObj, messageStr);
-      client->text(messageStr.c_str());
+      key = "message";
     }
+    else if (message.type == typeConnect)
+    {
+      key = "connect";
+      char sender[] = {radioSender, idSender};
+      connectedOverRadio.insert(std::string(sender));
+    }
+    else if (message.type == typeDisconnect)
+    {
+      key = "disconnect";
+      char sender[] = {radioSender, idSender};
+      connectedOverRadio.erase(std::string(sender));
+    }
+    else if (message.type == typePotentialConnections)
+    {
+      if (payload.length() > 0)
+      {
+        // send to connected client
+        key = "connectionOptions";
+      }
+      else
+      {
+        std::string contents;
+        for (std::pair<const byte, AsyncWebSocketClient *> keyValue : websocketClientsById)
+          contents += keyValue.first;
+        saveMessages(contents, radioSender, idSender, idRecipient, msgCount, 0, startEndType, typePotentialConnections);
+        return;
+      }
+    }
+    else
+    {
+      key = "unknown";
+    }
+    DynamicJsonDocument messageObj(200);
+    messageObj[key.c_str()] = fullMessage.c_str();
+    String messageStr;
+    serializeJson(messageObj, messageStr);
+    websocketClientsById[idRecipient]->text(messageStr.c_str());
     incomingMessages.clear();
     Heltec.display->clear();
     Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
@@ -195,8 +244,10 @@ void sendMessage()
   sending = true;
   Message message = outgoingMessages.front();
   LoRa.beginPacket();                          // start packet
-  LoRa.write(message.destination);             // add message destination
-  LoRa.write(address);                         // add local address
+  LoRa.write(message.radioDestination);        // add message radio destination
+  LoRa.write(message.idDestination);           // add message id destination
+  LoRa.write(message.radioSender);             // add local radio address
+  LoRa.write(message.idSender);                // add local sender id
   LoRa.write(message.id);                      // add message ID
   LoRa.write(message.frame);                   // add message frame
   LoRa.write(message.packet);                  // add packet number
@@ -211,21 +262,10 @@ void sendMessage()
   lastSend = millis();
 }
 
-void saveMessages(std::string fullmessage, byte destination, byte id, byte frame, byte packetLocation, byte type)
-{
-  // split into multiple packets
-  int endCount = ceil((double)fullmessage.length() / maxLoraPacket);
-  for (int i = 0; i < endCount; i++)
-  {
-    byte location = midType;
-    if (i == 0 || i == endCount - 1)
-      location = packetLocation;
-    outgoingMessages.push(Message(fullmessage.substr(i * maxLoraPacket, maxLoraPacket), destination, address, id, frame, i, location, type));
-  }
-}
-
 void handleError(AsyncWebServerRequest *request, int errorCode, String errorMessage)
 {
+  if (debug_mode)
+    DBG_OUTPUT_PORT.println("error: " + errorMessage);
   DynamicJsonDocument errorObj(200);
   errorObj["message"] = errorMessage;
   String jsonError;
@@ -242,14 +282,30 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
       DBG_OUTPUT_PORT.printf("ws[%s][%u] connect\n", server->url(), client->id());
       client->ping();
     }
-    websocketClients.push_back(client);
+    byte id = (byte)websocketClientsById.size();
+    websocketClientsByVal[client] = id;
+    websocketClientsById[id] = client;
+    DynamicJsonDocument successObj(200);
+    successObj["currentid"] = String(id);
+    String successStr;
+    serializeJson(successObj, successStr);
+    client->text(successStr.c_str());
   }
   else if (type == WS_EVT_DISCONNECT)
   {
     if (debug_mode && verbose)
       DBG_OUTPUT_PORT.printf("ws[%s][%u] disconnect\n", server->url(), client->id());
-    // delete from array
-    websocketClients.erase(std::remove(websocketClients.begin(), websocketClients.end(), client), websocketClients.end());
+    // delete from map
+    byte sender = websocketClientsByVal[client];
+    websocketClientsById.erase(sender);
+    websocketClientsByVal.erase(client);
+    if (sendSocketStatus.find(client) != sendSocketStatus.end())
+    {
+      byte *radioDestination = &sendSocketStatus[client].first;
+      byte *idDestination = &sendSocketStatus[client].second;
+      saveMessages("", *radioDestination, *idDestination, sender, msgCount, 0, startEndType, typeDisconnect);
+      sendSocketStatus.erase(client);
+    }
   }
   else if (type == WS_EVT_ERROR)
   {
@@ -271,12 +327,14 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
       if (debug_mode && verbose)
         DBG_OUTPUT_PORT.printf("ws[%s][%u] %s-message[%llu]: ", server->url(), client->id(), (info->opcode == WS_TEXT) ? "text" : "binary", info->len);
 
-      byte destination;
-      byte type;
+      byte radioDestination;
+      byte idDestination;
+      byte thetype;
       if (info->opcode == WS_TEXT)
       {
-        destination = data[0];
-        type = data[1];
+        radioDestination = data[0];
+        idDestination = data[0];
+        thetype = data[1];
         for (size_t i = 2; i < info->len; i++)
           msg += (char)data[i];
       }
@@ -286,8 +344,12 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
           DBG_OUTPUT_PORT.println("received binary data");
         return;
       }
-
-      saveMessages(msg, destination, msgCount, 0, startEndType, type);
+      byte idSender = websocketClientsByVal[client];
+      if (thetype == typeConnect)
+      {
+        sendSocketStatus[client] = std::pair<byte, byte>(address, idSender);
+      }
+      saveMessages(msg, radioDestination, idDestination, idSender, msgCount, 0, startEndType, thetype);
       if (debug_mode && verbose)
       {
         DBG_OUTPUT_PORT.println("send to " + String(destination));
@@ -317,16 +379,19 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
       if (debug_mode && verbose)
         DBG_OUTPUT_PORT.printf("ws[%s][%u] frame[%u] %s[%llu - %llu]: ", server->url(), client->id(), info->num, (info->message_opcode == WS_TEXT) ? "text" : "binary", info->index, info->index + len);
 
-      byte destination;
-      byte type;
+      byte radioDestination;
+      byte idDestination;
+      byte theType;
       size_t startIndex;
       if (frameType == startType)
       {
-        destination = data[0];
-        type = data[1];
-        messageHeaders[client].push_back(destination);
+        radioDestination = data[0];
+        idDestination = data[1];
+        theType = data[2];
+        messageHeaders[client].push_back(radioDestination);
+        messageHeaders[client].push_back(idDestination);
         messageHeaders[client].push_back(type);
-        startIndex = 2;
+        startIndex = 3;
       }
       else
       {
@@ -336,8 +401,9 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
             DBG_OUTPUT_PORT.println("could not find client in map");
           return;
         }
-        destination = messageHeaders[client][0];
-        destination = messageHeaders[client][1];
+        radioDestination = messageHeaders[client][0];
+        idDestination = messageHeaders[client][1];
+        theType = messageHeaders[client][2];
         startIndex = 0;
       }
       if (info->opcode == WS_TEXT)
@@ -373,7 +439,7 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
       {
         messageHeaders.erase(client);
       }
-      saveMessages(msg, destination, msgCount, info->index, frameType, type);
+      saveMessages(msg, radioDestination, idDestination, websocketClientsByVal[client], msgCount, info->index, frameType, theType);
       DynamicJsonDocument successObj(200);
       successObj["debug"] = "sent message";
       String successStr;
@@ -414,29 +480,54 @@ void setup()
   server.on("/config", HTTP_GET, [](AsyncWebServerRequest *request) {
     DBG_OUTPUT_PORT.println("#config get request");
     DynamicJsonDocument configObj(200);
-    configObj["source"] = String(address);
+    configObj["radiosource"] = String(address);
     String dataStr;
     serializeJson(configObj, dataStr);
     request->send(200, "application/json", dataStr.c_str()); });
 
-  server.on("/senders", HTTP_GET, [](AsyncWebServerRequest *request) {
-    DBG_OUTPUT_PORT.println("#senders get request");
+  server.on("/alreadyConnected", HTTP_GET, [](AsyncWebServerRequest *request) {
+    DBG_OUTPUT_PORT.println("#alreadyConnected get request");
     DynamicJsonDocument sendersObj(200);
-    JsonArray clients = sendersObj.createNestedArray("senders");
-    for (const byte & sender : pastSenders) {
+    JsonArray clients = sendersObj.createNestedArray("connected");
+    for (const std::string & sender : connectedOverRadio) {
       if (debug_mode && verbose)
-        DBG_OUTPUT_PORT.println(sender);
-      clients.add(String(sender));
+        DBG_OUTPUT_PORT.println(String(sender.c_str()));
+      clients.add(String(sender.c_str()));
     }
     String dataStr;
     serializeJson(sendersObj, dataStr);
     request->send(200, "application/json", dataStr.c_str()); });
 
+  server.on("/potentialConnections", HTTP_PUT, [](AsyncWebServerRequest *request) {}, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+    DBG_OUTPUT_PORT.println("#potentialConnections put request");
+    DynamicJsonDocument dataObj(200);
+    DBG_OUTPUT_PORT.println(String((const char *)data));
+    DeserializationError error = deserializeJson(dataObj, (const char *)data);
+    if (error != error.Ok) {
+      DBG_OUTPUT_PORT.println("error deserializing");
+      handleError(request, 500, error.c_str());
+      return;
+    }
+    if (!dataObj.containsKey("radio")) {
+      handleError(request, 500, "no radio key found");
+      return;
+    }
+    if (!dataObj.containsKey("websocketid")) {
+      handleError(request, 500, "no websocket id found");
+      return;
+    }
+    saveMessages("", (byte)dataObj["radio"], (byte)0, (byte)dataObj["websocketid"], msgCount, 0, startEndType, typePotentialConnections);
+    DynamicJsonDocument resObj(200);
+    resObj["message"] = "getting potential connections";
+    String resStr;
+    serializeJson(resObj, resStr);
+    request->send(200, "application/json", resStr.c_str()); });
+
   server.on("/message", HTTP_PUT, [](AsyncWebServerRequest *request) {}, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     DBG_OUTPUT_PORT.println("#message put request");
     DynamicJsonDocument dataObj(200);
-    DeserializationError error = deserializeJson(dataObj, data);
-    if (error) {
+    DeserializationError error = deserializeJson(dataObj, (const char *)data);
+    if (error != error.Ok) {
       handleError(request, 500, error.c_str());
       return;
     }
@@ -449,12 +540,18 @@ void setup()
       handleError(request, 500, "no message found");
       return;
     }
-    if (!dataObj.containsKey("destination")) {
+    if (!dataObj.containsKey("radioDestination")) {
       handleError(request, 500, "no destination key found");
       return;
     }
-    byte messageDestination = dataObj["destination"];
-    saveMessages(message.c_str(), messageDestination, msgCount, 0, startEndType, typeMessage);
+    if (!dataObj.containsKey("idDestination")) {
+      handleError(request, 500, "no destination key found");
+      return;
+    }
+    byte radioDestination = dataObj["radioDestination"];
+    byte idDestination = dataObj["idDestination"];
+    // one way message - no return data necessary
+    saveMessages(message.c_str(), radioDestination, idDestination, (byte)0, msgCount, 0, startEndType, typeMessage);
     DynamicJsonDocument successObj(200);
     successObj["message"] = "sent message";
     String successStr;
@@ -462,6 +559,11 @@ void setup()
     request->send(200, "application/json", successStr.c_str()); });
 
   // add CORS
+  server.on("/*", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
+    AsyncWebServerResponse *response = request->beginResponse(200);
+    response->addHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE");
+    response->addHeader("Access-Control-Allow-Headers", "Content-Type,Access-Control-Allow-Headers,Authorization");
+    request->send(response); });
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
 
   // add file handler
