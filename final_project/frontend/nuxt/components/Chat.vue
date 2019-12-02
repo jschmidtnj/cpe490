@@ -1,5 +1,7 @@
 <template>
   <div>
+    <p>{{ responder ? 'emergency responder' : 'civilian' }}</p>
+    {{ websocketid.charCodeAt(0) }}
     <v-select
       :options="chatOptions"
       v-model="destination"
@@ -36,17 +38,8 @@ import VueScrollTo from 'vue-scrollto'
 import Chat from '~/components/chat/Chat.vue'
 import { chatConf } from '~/assets/config'
 
-const emergencyOptions = []
 const emergencyServicesId = 2
 const personInNeedId = 3
-
-for (let i = 0; i < chatConf.emergencyServicesAddresses.length; i++) {
-  emergencyOptions.push({
-    label: `emergency services ${i + 1}`,
-    value: chatConf.emergencyServicesAddresses[i]
-  })
-}
-
 const messageType = '\x00'
 const connectType = '\x01'
 
@@ -121,9 +114,9 @@ export default {
       .then((res) => {
         if (res.status === 200 && res.data.hasOwnProperty('radiosource')) {
           if (
-            emergencyOptions.find(
+            chatConf.emergencyServicesAddresses.find(
               (option) =>
-                option.value.charCodeAt(0) === parseInt(res.data.radiosource[0])
+                option.charCodeAt(0) === parseInt(res.data.radiosource[0])
             )
           ) {
             this.responder = true
@@ -140,16 +133,18 @@ export default {
             })
           }
           this.socket.onmessage = (evt) => {
-            // console.log(`[message] Data received from server: ${evt.data}`)
+            console.log(`[message] Data received from server: ${evt.data}`)
             let jsonData
             try {
               jsonData = JSON.parse(evt.data)
             } catch (err) {
               this.$toasted.global.error({ message: JSON.stringify(err) })
+              return
             }
             if (jsonData.hasOwnProperty('debug')) {
               console.log(jsonData.debug)
             } else if (jsonData.hasOwnProperty('message')) {
+              console.log('got message')
               if (this.destination) {
                 const message = {
                   content: jsonData.message,
@@ -166,20 +161,30 @@ export default {
                 }, 100)
               }
             } else if (jsonData.hasOwnProperty('connect')) {
+              console.log('got connect')
               this.chatOptions.push({
-                value: String.fromCharCode(jsonData.connect),
-                label: `emergency ${this.chatOptions.length}`
+                value: {
+                  radio: String.fromCharCode(jsonData.connect[0]),
+                  id: String.fromCharCode(jsonData.connect[1])
+                },
+                label: `${this.responder ? 'emergency' : 'responder'} ${
+                  this.chatOptions.length
+                }`
               })
             } else if (jsonData.hasOwnProperty('currentid')) {
+              console.log('got current id')
               this.websocketid = String.fromCharCode(jsonData.currentid)
               this.updateChatSelection()
             } else if (jsonData.hasOwnProperty('disconnect')) {
+              console.log('got disconnect')
               const index = this.chatOptions.findIndex(
                 (elem) =>
                   elem.value === String.fromCharCode(jsonData.disconnect)
               )
               if (index > -1) this.chatOptions.splice(index, 1)
             } else if (jsonData.hasOwnProperty('connectionOptions')) {
+              console.log('got connection options')
+              console.log(jsonData.connectionOptions)
               const options = []
               for (let i = 0; i < jsonData.connectionOptions.length; i++) {
                 options.push({
@@ -189,7 +194,7 @@ export default {
                     ),
                     id: String.fromCharCode(jsonData.connectionOptions[i][1])
                   },
-                  label: `emergency ${i + 1}`
+                  label: `responder ${i + 1}`
                 })
               }
               this.chatOptions = options
@@ -265,7 +270,7 @@ export default {
       } else {
         this.$axios
           .put(chatConf.potentialConnectionsEndpoint, {
-            radio: this.radiosource,
+            radio: chatConf.emergencyServicesAddresses[0].charCodeAt(0),
             websocketid: this.websocketid.charCodeAt(0)
           })
           .then((res) => {

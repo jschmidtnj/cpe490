@@ -94,21 +94,26 @@ static bool blinkState = false; // false = off
 void saveMessages(std::string fullmessage, byte radioDestination, byte idDestination, byte idSender, byte id, byte frame, byte packetLocation, byte type)
 {
   // split into multiple packets
-  int endCount = ceil((double)fullmessage.length() / maxLoraPacket);
-  for (int i = 0; i < endCount; i++)
-  {
-    byte location = midType;
-    if (i == 0 || i == endCount - 1)
-      location = packetLocation;
-    outgoingMessages.push(Message(fullmessage.substr(i * maxLoraPacket, maxLoraPacket), radioDestination, idDestination, address, idSender, id, frame, i, location, type));
+  if (fullmessage.length() < 10) {
+    outgoingMessages.push(Message(fullmessage, radioDestination, idDestination, address, idSender, id, frame, 0, packetLocation, type));
+  } else {
+    int endCount = ceil((double)fullmessage.length() / maxLoraPacket);
+    for (int i = 0; i < endCount; i++)
+    {
+      byte location = midType;
+      if (i == 0 || i == endCount - 1)
+        location = packetLocation;
+      outgoingMessages.push(Message(fullmessage.substr(i * maxLoraPacket, maxLoraPacket), radioDestination, idDestination, address, idSender, id, frame, i, location, type));
+    }
   }
+  DBG_OUTPUT_PORT.println("added to outgoing queue");
 }
 
 void onReceive(int packetSize)
 {
   if (packetSize == 0)
     return; // if there's no packet, return
-  DBG_OUTPUT_PORT.println("received message");
+  DBG_OUTPUT_PORT.println("just received a message");
   // read packet header bytes:
   byte radioRecipient = LoRa.read();
   byte idRecipient = LoRa.read();
@@ -125,6 +130,10 @@ void onReceive(int packetSize)
 
   while (LoRa.available())        // can't use readString() in callback
     payload += (char)LoRa.read(); // add bytes one by one
+
+  DBG_OUTPUT_PORT.println(payload.c_str());
+  DBG_OUTPUT_PORT.println(payload.length());
+  DBG_OUTPUT_PORT.println(length);
 
   if (debug_mode && length != payload.length()) // check length for error
   {
@@ -151,13 +160,14 @@ void onReceive(int packetSize)
     return;
   }
   // here the packet is for me
+  DBG_OUTPUT_PORT.println("got a message for me");
   incomingMessages.push_back(message);
   if (message.packetLocation == endType || message.packetLocation == startEndType)
   {
     std::string fullMessage = "";
     for (Message &message : incomingMessages)
       fullMessage.append(message.payload);
-    std::string key;
+    std::string key = "";
     if (message.type == typeMessage)
     {
       key = "message";
@@ -178,28 +188,36 @@ void onReceive(int packetSize)
     {
       if (payload.length() > 0)
       {
+        DBG_OUTPUT_PORT.println("return potential connections");
         // send to connected client
         key = "connectionOptions";
       }
       else
       {
+        DBG_OUTPUT_PORT.println("get potential connections");
         std::string contents;
+        DBG_OUTPUT_PORT.println(websocketClientsById.size());
         for (std::pair<const byte, AsyncWebSocketClient *> keyValue : websocketClientsById)
-          contents += keyValue.first;
+          contents = contents + (char)('0' + (int)keyValue.first);
+        DBG_OUTPUT_PORT.println(contents.c_str());
         saveMessages(contents, radioSender, idSender, idRecipient, msgCount, 0, startEndType, typePotentialConnections);
-        return;
       }
     }
     else
     {
       key = "unknown";
     }
+    incomingMessages.clear();
+    if (key.length() == 0) return;
     DynamicJsonDocument messageObj(200);
     messageObj[key.c_str()] = fullMessage.c_str();
     String messageStr;
     serializeJson(messageObj, messageStr);
+    DBG_OUTPUT_PORT.println(messageStr);
+    DBG_OUTPUT_PORT.println((char)('0' + (int)idRecipient));
+    DBG_OUTPUT_PORT.println(websocketClientsById.size());
+    websocketClientsById[idRecipient]->text("{\"debug\":\"test321\"}");
     websocketClientsById[idRecipient]->text(messageStr.c_str());
-    incomingMessages.clear();
     Heltec.display->clear();
     Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
     Heltec.display->setFont(ArialMT_Plain_10);
@@ -254,12 +272,13 @@ void sendMessage()
   LoRa.write(message.packetLocation);          // add packet location type
   LoRa.write(message.type);                    // add message type
   LoRa.write(message.payload.length());        // add payload length
-  LoRa.print(String(message.payload.c_str())); // add payload
+  LoRa.print(message.payload.c_str());         // add payload
   LoRa.endPacket();                            // finish packet and send it
   msgCount++;                                  // increment message ID
   outgoingMessages.pop();
   sending = false;
   lastSend = millis();
+  DBG_OUTPUT_PORT.println("just sent a message");
 }
 
 void handleError(AsyncWebServerRequest *request, int errorCode, String errorMessage)
@@ -282,9 +301,11 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
       DBG_OUTPUT_PORT.printf("ws[%s][%u] connect\n", server->url(), client->id());
       client->ping();
     }
+    DBG_OUTPUT_PORT.println("added a client");
     byte id = (byte)websocketClientsById.size();
     websocketClientsByVal[client] = id;
     websocketClientsById[id] = client;
+    DBG_OUTPUT_PORT.println((char)('0' + (int)id));
     DynamicJsonDocument successObj(200);
     successObj["currentid"] = String(id);
     String successStr;
@@ -295,6 +316,7 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
   {
     if (debug_mode && verbose)
       DBG_OUTPUT_PORT.printf("ws[%s][%u] disconnect\n", server->url(), client->id());
+    DBG_OUTPUT_PORT.println("deleted a client");
     // delete from map
     byte sender = websocketClientsByVal[client];
     websocketClientsById.erase(sender);
@@ -352,7 +374,7 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
       saveMessages(msg, radioDestination, idDestination, idSender, msgCount, 0, startEndType, thetype);
       if (debug_mode && verbose)
       {
-        DBG_OUTPUT_PORT.println("send to " + String(destination));
+        DBG_OUTPUT_PORT.println("send to " + String(radioDestination));
         DBG_OUTPUT_PORT.printf("%s\n", msg.c_str());
         DBG_OUTPUT_PORT.println("received text message");
       }
@@ -501,10 +523,8 @@ void setup()
   server.on("/potentialConnections", HTTP_PUT, [](AsyncWebServerRequest *request) {}, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     DBG_OUTPUT_PORT.println("#potentialConnections put request");
     DynamicJsonDocument dataObj(200);
-    DBG_OUTPUT_PORT.println(String((const char *)data));
     DeserializationError error = deserializeJson(dataObj, (const char *)data);
     if (error != error.Ok) {
-      DBG_OUTPUT_PORT.println("error deserializing");
       handleError(request, 500, error.c_str());
       return;
     }
@@ -516,7 +536,9 @@ void setup()
       handleError(request, 500, "no websocket id found");
       return;
     }
-    saveMessages("", (byte)dataObj["radio"], (byte)0, (byte)dataObj["websocketid"], msgCount, 0, startEndType, typePotentialConnections);
+    DBG_OUTPUT_PORT.println((byte)dataObj["radio"]);
+    DBG_OUTPUT_PORT.println((byte)dataObj["websocketid"]);
+    saveMessages("", (byte)dataObj["radio"], 0x00, (byte)dataObj["websocketid"], msgCount, 0, startEndType, typePotentialConnections);
     DynamicJsonDocument resObj(200);
     resObj["message"] = "getting potential connections";
     String resStr;

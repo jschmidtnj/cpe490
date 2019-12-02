@@ -9,6 +9,5 @@ export const chatConf = {
   configEndpoint: '/config',
   alreadyConnectedEndpoint: '/alreadyConnected',
   potentialConnectionsEndpoint: '/potentialConnections',
-  emergencyServicesAddresses: ['\x01'],
-  clientAddresses: ['\x00']
+  emergencyServicesAddresses: ['\x01']
 }
