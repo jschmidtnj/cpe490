@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="500"
+   height="500"
+   viewBox="0 0 132.29167 132.29167"
+   version="1.1"
+   id="svg8"
+   inkscape:version="0.92.4 5da689c313, 2019-01-14"
+   sodipodi:docname="stormnet_logo.svg"
+   inkscape:export-filename="/home/joshua/bitmap.png"
+   inkscape:export-xdpi="96"
+   inkscape:export-ydpi="96">
+  <defs
+     id="defs2" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="1"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="2.8"
+     inkscape:cx="168.7147"
+     inkscape:cy="252.85714"
+     inkscape:document-units="mm"
+     inkscape:current-layer="g848"
+     showgrid="false"
+     inkscape:pagecheckerboard="true"
+     units="px"
+     inkscape:window-width="3744"
+     inkscape:window-height="2048"
+     inkscape:window-x="96"
+     inkscape:window-y="56"
+     inkscape:window-maximized="1" />
+  <metadata
+     id="metadata5">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(0,-164.70832)">
+    <g
+       id="g848"
+       transform="matrix(0.78822201,0,0,0.81866197,-14.36151,107.75241)">
+      <ellipse
+         id="path840"
+         style="opacity:1;fill:#4c5e5f;fill-opacity:1;stroke-width:0.81921679"
+         ry="80.855202"
+         rx="83.903625"
+         cy="150.49644"
+         cx="102.18671" />
+      <path
+         style="fill:#f6f75a;fill-opacity:1;stroke-width:0.26458332"
+         inkscape:connector-curvature="0"
+         d="m 148.60813,151.53791 -26.45054,-15.25219 26.9196,-24.12077 c 2.9258,-2.95526 2.27243,-7.9133 -1.32614,-9.98834 L 114.7452,83.144447 c -2.75049,-1.586015 -6.26469,-0.89418 -8.20424,1.621918 L 67.486055,135.54677 c -2.33871,3.04947 -1.463331,7.46359 1.860176,9.38002 L 96.553143,160.61511 60.280049,199.103 c -2.834095,3.00815 -2.065293,7.81898 1.441579,9.84114 1.925341,1.11022 4.340543,1.15902 6.353528,-0.001 l 80.519504,-46.41752 c 4.2331,-2.41523 4.2538,-8.54223 0.0135,-10.98732 z"
+         id="path21" />
+    </g>
+  </g>
+</svg>

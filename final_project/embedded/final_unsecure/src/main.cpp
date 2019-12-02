@@ -595,7 +595,7 @@ void setup()
   // add web socket stuff
   ws.onEvent(onWsEvent);
   server.addHandler(&ws);
-  server.addHandler(&ws);
+
   //handle not found
   server.onNotFound(handleNotFound);
   if (debug_mode)
