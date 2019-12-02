@@ -1,7 +1,11 @@
 <template>
   <header class="navbar">
     <section class="navbar-section">
-      <a href="..." class="navbar-brand btn btn-link ml-2">Emergency</a>
+      <img
+        src="~/static/icon.png"
+        class="navbar-brand btn btn-link ml-2 nav-icon"
+      />
+      <a href="/" class="navbar-brand btn btn-link">Storm Net</a>
       <a href="/about" class="btn btn-link">About</a>
     </section>
   </header>
@@ -14,4 +18,8 @@ export default Vue.extend({
 })
 </script>
 
-<style lang="scss"></style>
+<style lang="scss">
+.nav-icon {
+  max-width: 2.5rem;
+}
+</style>

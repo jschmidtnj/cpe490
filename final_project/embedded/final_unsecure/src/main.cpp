@@ -1,7 +1,9 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include <DNSServer.h>
 #include <SPIFFS.h>
 #include <heltec.h>
 #include <queue>
@@ -32,7 +34,12 @@
 #define historySize 15
 #define maxLoraPacket 200    // bytes in size
 #define senderHistorySize 20 // max sender history
+#define create_local_host true
+#define ttl 300 // ttl for dns
+const char *host = "stormnet.com";
 
+DNSServer dnsServer;
+const byte DNS_PORT = 53;
 IPAddress Ip(192, 168, 1, 1); // ip address for website
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
@@ -79,9 +86,46 @@ byte midType = 0x00;
 byte startEndType = 0xFF;
 byte typeMessage = 0x00;
 
+static const unsigned long PRINT_INTERVAL = 1000; //ms
+static unsigned long lastPrint = 0;
+
 static const unsigned long BLINK_INTERVAL = 1000; //ms
 static unsigned long lastBlink = 0;
 static bool blinkState = false; // false = off
+
+void printStations()
+{
+  wifi_sta_list_t stationList;
+  esp_wifi_ap_get_sta_list(&stationList);
+  char headerChar[50] = {0};
+  char buffer[5] = {0};
+  String stationNumStr = itoa(stationList.num, buffer, 10);
+  String headerStr = "Num Connect: " + stationNumStr;
+  headerStr.toCharArray(headerChar, 50);
+  Heltec.display->clear();
+  Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
+  Heltec.display->setFont(ArialMT_Plain_10);
+  Heltec.display->drawString(0, 0, headerChar);
+  for (int i = 0; i < stationList.num; i++)
+  {
+    wifi_sta_info_t station = stationList.sta[i];
+    String mac = "";
+    for (int j = 0; j < 6; j++)
+    {
+      mac += (char)station.mac[j];
+      if (j < 5)
+        mac += ":";
+    }
+    if (debug_mode)
+      DBG_OUTPUT_PORT.println(mac);
+    char macChar[25];
+    mac.substring(1, 16).toCharArray(macChar, 25);
+    // Heltec.display->drawString(0, i + 1, macChar);
+  }
+  for (int i = 0; i < 7 - stationList.num; i++)
+    Heltec.display->drawString(0, i + 2 + stationList.num, "                ");
+  Heltec.display->display();
+}
 
 void onReceive(int packetSize)
 {
@@ -151,11 +195,6 @@ void onReceive(int packetSize)
       client->text(messageStr.c_str());
     }
     incomingMessages.clear();
-    Heltec.display->clear();
-    Heltec.display->setTextAlignment(TEXT_ALIGN_LEFT);
-    Heltec.display->setFont(ArialMT_Plain_10);
-    Heltec.display->drawString(0, 0, String(fullMessage.c_str()));
-    Heltec.display->display();
   }
   if (debug_mode)
   {
@@ -406,6 +445,14 @@ void setup()
     DBG_OUTPUT_PORT.println(IP);
   }
 
+  if (create_local_host)
+  {
+    //dnsServer.start(DNS_PORT, "*", IP);
+    dnsServer.setTTL(ttl);
+    dnsServer.setErrorReplyCode(DNSReplyCode::ServerFailure);
+    dnsServer.start(DNS_PORT, host, IP);
+  }
+
   server.on("/hello", HTTP_GET, [](AsyncWebServerRequest *request) {
     DBG_OUTPUT_PORT.println("#hello get request");
     request->send(200, "text/plain", "Hello World Get");
@@ -462,6 +509,11 @@ void setup()
     request->send(200, "application/json", successStr.c_str()); });
 
   // add CORS
+  server.on("/*", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
+    AsyncWebServerResponse *response = request->beginResponse(200);
+    response->addHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE");
+    response->addHeader("Access-Control-Allow-Headers", "Content-Type,Access-Control-Allow-Headers,Authorization");
+    request->send(response); });
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
 
   // add file handler
@@ -471,7 +523,7 @@ void setup()
   // add web socket stuff
   ws.onEvent(onWsEvent);
   server.addHandler(&ws);
-  server.addHandler(&ws);
+
   //handle not found
   server.onNotFound(handleNotFound);
   if (debug_mode)
@@ -494,6 +546,8 @@ void setup()
 
 void loop()
 {
+  if (create_local_host)
+    dnsServer.processNextRequest();
   int packetSize = LoRa.parsePacket();
   if (packetSize)
     onReceive(packetSize);
@@ -503,8 +557,11 @@ void loop()
     blinkState = !blinkState;
     digitalWrite(LED_BUILTIN, blinkState);
   }
-  if (!sending && millis() - lastSend > send_delay && !outgoingMessages.empty())
+  if (millis() - lastPrint >= PRINT_INTERVAL)
   {
-    sendMessage();
+    lastPrint += PRINT_INTERVAL;
+    printStations();
   }
+  if (!sending && millis() - lastSend > send_delay && !outgoingMessages.empty())
+    sendMessage();
 }

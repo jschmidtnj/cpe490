@@ -1,7 +1,7 @@
 require('dotenv').config()
 const apiurl = process.env.APIURL
 
-const name = 'emergency services'
+const name = 'StormNet'
 
 module.exports = {
   mode: 'spa',

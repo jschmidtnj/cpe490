@@ -8,7 +8,9 @@
       placeholder="select chat"
       label="label"
     >
-      <span slot="no-options">No one needs assistance.</span>
+      <span slot="no-options">{{
+        responder ? 'no one needs assistance' : 'no responders found'
+      }}</span>
     </v-select>
     <Chat
       :participants="participants"
@@ -20,11 +22,11 @@
       :placeholder="'send message'"
       :colors="colors"
       :borderStyle="borderStyle"
-      :hideCloseButton="false"
+      :hideCloseButton="true"
       :closeButtonIconSize="'20px'"
       :submitIconSize="'30px'"
       :asyncMode="false"
-      class="chat mt-2"
+      class="chat"
     />
   </div>
 </template>
@@ -37,7 +39,7 @@ import { chatConf } from '~/assets/config'
 
 const emergencyOptions = []
 const emergencyServicesId = 2
-const personInNeedId = 3
+const civilianId = 3
 
 for (let i = 0; i < chatConf.emergencyServicesAddresses.length; i++) {
   emergencyOptions.push({
@@ -60,8 +62,8 @@ export default {
           id: emergencyServicesId
         },
         {
-          name: 'Person in Need',
-          id: personInNeedId
+          name: 'Civilian',
+          id: civilianId
         }
       ],
       me: {
@@ -70,7 +72,8 @@ export default {
       },
       socket: null,
       responder: false,
-      source: '',
+      radiosource: '',
+      websocketid: '',
       destination: null,
       cancleScroll: null,
       chatOptions: [],
@@ -86,7 +89,7 @@ export default {
             text: '#0a0a0a'
           },
           others: {
-            bg: '#fb4141',
+            bg: '#4061e6',
             text: '#0a0a0a'
           },
           messagesDisplay: {
@@ -135,7 +138,7 @@ export default {
               chatConf.websocketEndpoint
             }`
           )
-          this.source = res.data.source
+          this.radiosource = res.data.source
           this.socket.onopen = (evt) => {
             this.$toasted.global.success({
               message: 'Connection established'
@@ -157,11 +160,14 @@ export default {
                 myself: false,
                 participantId: this.responder
                   ? emergencyServicesId
-                  : personInNeedId,
+                  : civilianId,
                 uploaded: false,
                 viewed: false
               }
               this.newMessage(message)
+              setTimeout(() => {
+                this.scrollToBottom()
+              }, 100)
             }
           }
           this.socket.onclose = (evt) => {
@@ -253,7 +259,11 @@ export default {
 <style lang="scss" scoped>
 .chat {
   max-width: 30rem;
+  margin: auto;
   height: 40rem;
+  @media only screen and (min-width: 600px) {
+    margin-top: 2rem;
+  }
 }
 .chat .custom-title {
   color: #ffffff;
