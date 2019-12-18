@@ -19,8 +19,12 @@
 
 #ifdef NODE0
 #include "config/node0.h"
-#else
+#endif
+#ifdef NODE1
 #include "config/node1.h"
+#endif
+#ifdef NODE2
+#include "config/node2.h"
 #endif
 
 #define DBG_OUTPUT_PORT Serial
@@ -64,9 +68,8 @@ struct Message {
         packet{_packet},
         packetLocation{_packetLocation},
         type{_type} {
-    hash = std::hash<std::string>{}(payload + (char)sender + (char)destination +
-                                    (char)id + (char)frame + (char)packet +
-                                    (char)type);
+    hash = std::hash<std::string>{}(payload + (char)destination + (char)id + (char)frame +
+                                    (char)packet + (char)type);
   }
 };
 
@@ -167,6 +170,17 @@ void onReceive(int packetSize) {
     return;
   }
   // here the packet is for me
+  // first check if I got it already
+  if (hashHistory.find(message.hash) != hashHistory.end()) {
+    return;
+  } else {
+    hashHistory.insert(message.hash);
+    hashQueue.push(&message.hash);
+    if (hashQueue.size() > historySize) {
+      hashHistory.erase(*hashQueue.front());
+      hashQueue.pop();
+    }
+  }
   incomingMessages.push_back(message);
   pastSenders.insert(sender);
   pastSendersQueue.push(&sender);
@@ -463,7 +477,8 @@ void setup() {
               DynamicJsonDocument dataObj(200);
               DeserializationError error = deserializeJson(dataObj, data);
               if (error) {
-                if (debug_mode) DBG_OUTPUT_PORT.println("#error deserializing JSON");
+                if (debug_mode)
+                  DBG_OUTPUT_PORT.println("#error deserializing JSON");
                 handleError(request, 500, error.c_str());
                 return;
               }
