@@ -1,10 +1,11 @@
 <template>
   <div>
+    <p>{{ responder ? 'responder' : 'civilian' }}</p>
     <v-select
       v-if="responder"
       :options="chatOptions"
       v-model="destination"
-      @select="onChatSelect"
+      @input="onChatSelect"
       placeholder="select chat"
       label="label"
     >
@@ -127,7 +128,7 @@ export default {
           },
           others: {
             bg: '#4061e6',
-            text: '#0a0a0a'
+            text: '#fff'
           },
           messagesDisplay: {
             bg: '#f7f3f3'
@@ -153,6 +154,7 @@ export default {
     this.messages = []
   },
   mounted() {
+    this.getLocation()
     this.$axios
       .get(chatConf.configEndpoint)
       .then((res) => {
@@ -192,20 +194,23 @@ export default {
             if (jsonData.hasOwnProperty('debug')) {
               console.log(jsonData.debug)
             } else if (jsonData.hasOwnProperty('message')) {
-              const message = {
-                content: jsonData.message,
-                myself: false,
-                participantId: this.responder
-                  ? emergencyServicesId
-                  : civilianId,
-                uploaded: false,
-                viewed: false
+              if (this.destination) {
+                const message = {
+                  content: jsonData.message,
+                  myself: false,
+                  participantId: this.responder
+                    ? civilianId
+                    : emergencyServicesId,
+                  uploaded: false,
+                  viewed: false
+                }
+                this.newMessage(message)
+                setTimeout(() => {
+                  this.scrollToBottom()
+                }, 100)
               }
-              this.newMessage(message)
-              setTimeout(() => {
-                this.scrollToBottom()
-              }, 100)
             } else if (jsonData.hasOwnProperty('location')) {
+              console.log('received location!')
               if (this.responder) {
                 const location = jsonData.location.split(',')
                 this.location = {
@@ -213,7 +218,7 @@ export default {
                   longitude: location[1]
                 }
               } else {
-                this.sendLocation()
+                this.getLocation()
               }
             }
           }
@@ -242,6 +247,7 @@ export default {
   methods: {
     ...mapMutations({ newMessage: 'chat/newMessage' }),
     onChatSelect() {
+      console.log('selected location')
       this.messages = []
       this.location = {
         latitude: null,
@@ -250,9 +256,11 @@ export default {
       this.requestLocation()
     },
     requestLocation() {
+      console.log('requesting location')
+      console.log(`got destination: ${this.destination.value.charCodeAt(0)}`)
       this.$axios
-        .put('/location', {
-          destination: this.destination
+        .put(chatConf.locationEndpoint, {
+          destination: this.destination.value.charCodeAt(0)
         })
         .then((res) => {
           if (res.status === 200) {
@@ -270,47 +278,63 @@ export default {
           }
         })
         .catch((err) => {
-          const message = 'problem requesting location'
+          const message = `problem requesting location: ${JSON.stringify(
+            err.response.data
+          )}`
           this.$toasted.global.error({ message })
           console.log(message, err)
         })
     },
-    sendLocation() {
+    getLocation() {
       if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition((pos) => {
-          this.location.latitude = pos.coords.latitude
-          this.location.longitude = pos.coords.longitude
-        })
-        console.log(this.location)
-        this.$axios
-          .put('/location', {
-            latitude: this.location.latitude,
-            longitude: this.location.longitude,
-            destination: this.destination
-          })
-          .then((res) => {
-            if (res.status === 200) {
-              if (res.data.hasOwnProperty('message')) {
-                this.$toasted.global.success({ message: res.data.message })
-              } else {
-                this.$toasted.global.success({
-                  message: 'success sending location'
-                })
-              }
-            } else {
-              this.$$toasted.global.error({
-                message: 'did not get 200 for location send'
-              })
-            }
-          })
-          .catch((err) => {
-            const message = 'got error with location send request'
-            this.$toasted.global.error({ message })
-            console.log(message, err)
-          })
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            console.log(pos)
+            this.location.latitude = pos.coords.latitude
+            this.location.longitude = pos.coords.longitude
+            console.log('got location')
+            console.log(this.location)
+            this.sendLocation()
+          },
+          (err) => {
+            console.log(err.message)
+          }
+        )
+        console.log('done')
       } else {
         console.error('this browser does not support geolocation')
       }
+    },
+    sendLocation() {
+      console.log('sending location')
+      this.$axios
+        .put(chatConf.locationEndpoint, {
+          latitude: this.location.latitude,
+          longitude: this.location.longitude,
+          destination: this.destination.value
+        })
+        .then((res) => {
+          if (res.status === 200) {
+            if (res.data.hasOwnProperty('message')) {
+              this.$toasted.global.success({ message: res.data.message })
+            } else {
+              this.$toasted.global.success({
+                message: 'success sending location'
+              })
+            }
+          } else {
+            this.$$toasted.global.error({
+              message: 'did not get 200 for location send'
+            })
+          }
+        })
+        .catch((err) => {
+          const message = `got error with location send request: ${JSON.stringify(
+            err
+          )}`
+          this.$toasted.global.error({ message })
+          console.log(message, err)
+        })
     },
     updateChatSelection() {
       this.$axios

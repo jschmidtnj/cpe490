@@ -8,5 +8,6 @@ export const chatConf = {
   websocketEndpoint: '/ws',
   configEndpoint: '/config',
   senderListEndpoint: '/senders',
+  locationEndpoint: '/location',
   emergencyServicesAddresses: ['\x01']
 }

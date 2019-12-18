@@ -1,21 +1,21 @@
 #include <Arduino.h>
+#include <ArduinoJson.h>
+#include <AsyncTCP.h>
+#include <DNSServer.h>
+#include <ESPAsyncWebServer.h>
+#include <SPIFFS.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
-#include <DNSServer.h>
-#include <SPIFFS.h>
 #include <heltec.h>
-#include <queue>
-#include <unordered_set>
-#include <unordered_map>
-#include <ArduinoJson.h>
-#include <string>
 #include <math.h>
-#include <vector>
 #include <algorithm>
+#include <queue>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
-#define NODE1
+#define NODE0
 
 #ifdef NODE0
 #include "config/node0.h"
@@ -24,7 +24,7 @@
 #endif
 
 #define DBG_OUTPUT_PORT Serial
-#define debug_mode false
+#define debug_mode true
 #define verbose true
 #define BAND 433E6  // set band directly here: 433E6, 868E6,915E6
 #define BAUD_RATE 115200
@@ -263,13 +263,12 @@ void handleError(AsyncWebServerRequest *request, int errorCode,
   request->send(errorCode, "application/json", jsonError.c_str());
 }
 
-void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len)
-{
-  if (type == WS_EVT_CONNECT)
-  {
-    if (debug_mode && verbose)
-    {
-      DBG_OUTPUT_PORT.printf("ws[%s][%u] connect\n", server->url(), client->id());
+void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
+               AwsEventType type, void *arg, uint8_t *data, size_t len) {
+  if (type == WS_EVT_CONNECT) {
+    if (debug_mode && verbose) {
+      DBG_OUTPUT_PORT.printf("ws[%s][%u] connect\n", server->url(),
+                             client->id());
       client->ping();
     }
     websocketClients.push_back(client);
@@ -278,10 +277,10 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
       DBG_OUTPUT_PORT.printf("ws[%s][%u] disconnect\n", server->url(),
                              client->id());
     // delete from array
-    websocketClients.erase(std::remove(websocketClients.begin(), websocketClients.end(), client), websocketClients.end());
-  }
-  else if (type == WS_EVT_ERROR)
-  {
+    websocketClients.erase(
+        std::remove(websocketClients.begin(), websocketClients.end(), client),
+        websocketClients.end());
+  } else if (type == WS_EVT_ERROR) {
     if (debug_mode && verbose)
       DBG_OUTPUT_PORT.printf("ws[%s][%u] error(%u): %s\n", server->url(),
                              client->id(), *((uint16_t *)arg), (char *)data);
@@ -457,14 +456,14 @@ void setup() {
     request->send(200, "application/json", dataStr.c_str());
   });
 
-  /*
   server.on("/location", HTTP_PUT, [](AsyncWebServerRequest *request) {}, NULL,
             [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
                size_t index, size_t total) {
-              DBG_OUTPUT_PORT.println("#location put request");
+              if (debug_mode) DBG_OUTPUT_PORT.println("#location put request");
               DynamicJsonDocument dataObj(200);
               DeserializationError error = deserializeJson(dataObj, data);
               if (error) {
+                if (debug_mode) DBG_OUTPUT_PORT.println("#error deserializing JSON");
                 handleError(request, 500, error.c_str());
                 return;
               }
@@ -496,7 +495,6 @@ void setup() {
               serializeJson(successObj, successStr);
               request->send(200, "application/json", successStr.c_str());
             });
-    */
 
   server.on("/message", HTTP_PUT, [](AsyncWebServerRequest *request) {}, NULL,
             [](AsyncWebServerRequest *request, uint8_t *data, size_t len,

@@ -217,6 +217,7 @@ export default {
   .message-username {
     font-size: 10px;
     font-weight: bold;
+    text-align: left;
   }
 
   .icon-sent {
